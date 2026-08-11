@@ -24,9 +24,9 @@ Open `index.html`. No build, no dependencies, no server, no API key.
 
 ## Donations
 
-The joke is free; the shelter isn't. There's a **Donate to the shelter** button in the
-sidebar and a link under the composer (the sidebar is hidden on narrow screens, so the
-composer link is the one mobile visitors see). Both point at the same GoFundMe campaign:
+There's a **Support the local cats** button in the sidebar and a matching link under the
+composer (the sidebar is hidden on narrow screens, so the composer link is the one mobile
+visitors see). Both point at the same GoFundMe campaign:
 <https://giving.gofundme.com/campaign/751636/donate?c_src=website>
 
 Responsive to mobile, keyboard focus visible, `prefers-reduced-motion` respected,
