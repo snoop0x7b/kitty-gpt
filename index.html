@@ -254,6 +254,19 @@
   </svg>
 </template>
 
+<template id="empty-state">
+  <div class="empty">
+    <span data-cat></span>
+    <h1>Ask it anything.</h1>
+    <p>It has read the entire internet. It will answer in meows.</p>
+    <div class="starters">
+      <button>Explain quantum computing</button>
+      <button>Write a cover letter</button>
+      <button>Why are you like this</button>
+    </div>
+  </div>
+</template>
+
 <div class="app">
   <aside class="rail">
     <div class="brand">
@@ -268,9 +281,9 @@
 
     <div style="min-height:0; display:flex; flex-direction:column">
       <h2>Today</h2>
-      <ul class="threads">
-        <li><button class="on">Untitled chat</button></li>
-        <li><button>Why 4am specifically</button></li>
+      <ul class="threads" id="threads">
+        <li><button class="on" data-thread="">Untitled chat</button></li>
+        <li><button data-thread="4am">Why 4am specifically</button></li>
         <li><button>Is the box load-bearing</button></li>
         <li><button>Reheating a sunbeam</button></li>
         <li><button>Tax implications of napping</button></li>
@@ -308,18 +321,7 @@
     </header>
 
     <div class="stream" id="stream">
-      <div class="inner" id="inner" role="log" aria-live="polite">
-        <div class="empty" id="empty">
-          <span data-cat></span>
-          <h1>Ask it anything.</h1>
-          <p>It has read the entire internet. It will answer in meows.</p>
-          <div class="starters">
-            <button>Explain quantum computing</button>
-            <button>Write a cover letter</button>
-            <button>Why are you like this</button>
-          </div>
-        </div>
-      </div>
+      <div class="inner" id="inner" role="log" aria-live="polite"></div>
     </div>
 
     <footer class="composer">
@@ -343,12 +345,13 @@
 (() => {
   const $ = (s, r = document) => r.querySelector(s);
   const stream = $('#stream'), inner = $('#inner'), input = $('#input'),
-        send = $('#send'), form = $('#form'), empty = $('#empty');
-  const catTpl = $('#cat-svg');
+        send = $('#send'), form = $('#form'), threads = $('#threads');
+  const catTpl = $('#cat-svg'), emptyTpl = $('#empty-state');
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const cat = () => catTpl.content.firstElementChild.cloneNode(true);
-  document.querySelectorAll('[data-cat]').forEach(slot => slot.replaceWith(cat()));
+  const mountCats = root => root.querySelectorAll('[data-cat]').forEach(s => s.replaceWith(cat()));
+  mountCats(document);
 
   /* ---------- the vocabulary ---------- */
   const VOCAB = [
@@ -413,6 +416,24 @@
     'Formulating', 'Almost ready', 'Knocking a variable off the table',
   ];
 
+  /* ---------- the archive ---------- */
+  // Real questions, asked in earnest. The saved answers are no better than the live ones.
+  const THREADS = {
+    '4am': [
+      ['user', "Why do you always have the zoomies specifically at 4AM? Couldn't you just wait until 9AM or do it at 8PM? Why 4AM specifically? I'm trying to sleep."],
+      ['bot', "Meow, mrow, miao, meow:\n\n- Mew, meow, mrrp.\n- Miaou, meow, miau!\n- Mrrow, meeeow, meow.\n- Meow, MEOW, meow…\n\n**tl;dr:** Mrrp.", 8.4],
+      ['user', "None of those are times. Three of the four things I asked were about times."],
+      ['bot', "Meow, mew, meow. mrow! Meow?", 9.9],
+      ['user', "So that's a no on 8PM."],
+      ['bot', "**Meow.**", 3.2],
+      ['user', "Your bowl is full dude!"],
+      ['bot', "**Meow.**", 3.2],
+    ],
+  };
+
+  // Every word in a reply is a vocalization. The tl;dr label is the one thing that isn't.
+  const vocalizations = t => (t.replace(/tl;dr/g, '').match(/[a-z]+/gi) || []).length;
+
   /* ---------- rendering ---------- */
   const esc = s => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
 
@@ -448,7 +469,7 @@
     return svg;
   }
 
-  let busy = false, cancel = null;
+  let busy = false, cancel = null, era = 0;
 
   function thinking() {
     const row = document.createElement('div');
@@ -517,6 +538,8 @@
 
   /* ---------- the act ---------- */
   async function respond(intoBody) {
+    const mine = ++era;                        // a thread switch mid-answer abandons this one
+    const live = () => mine === era;
     busy = true; send.disabled = true;
     inner.setAttribute('aria-busy', 'true');   // keep the token-by-token reveal out of screen readers
     let stopped = false;
@@ -526,11 +549,12 @@
 
     // 3 to 10 seconds of visible deliberation, interruptible.
     const think = int(3000, 10000);
-    for (let waited = 0; waited < think && !stopped; waited += 100) {
+    for (let waited = 0; waited < think && !stopped && live(); waited += 100) {
       await new Promise(r => setTimeout(r, 100));
     }
     const seconds = wait.elapsed();
     wait.done();
+    if (!live()) return;
 
     if (stopped) {
       const body = intoBody || botMessage();
@@ -545,13 +569,14 @@
     let out = '';
 
     for (const t of tokens) {
-      if (stopped) break;
+      if (stopped || !live()) break;
       out += t;
       body.innerHTML = format(out) + '<span class="cursor"></span>';
       follow();
       if (t.trim()) await new Promise(r => setTimeout(r, reduced ? 0 : rand(45, 110)));
     }
 
+    if (!live()) return;
     body.innerHTML = format(out);
     footer(body, seconds, count);
     follow();
@@ -580,17 +605,52 @@
     e.preventDefault();
     const text = input.value.trim();
     if (!text || busy) return;
-    empty?.remove();
+    inner.querySelector('.empty')?.remove();
     input.value = ''; grow(); send.disabled = true;
     userMessage(text);
     respond();
   });
 
-  document.querySelectorAll('.starters button').forEach(b => {
-    b.onclick = () => { input.value = b.textContent; grow(); input.focus(); form.requestSubmit(); };
+  /* ---------- threads ---------- */
+  function openThread(id) {
+    era++; busy = false; cancel = null;                // abandon anything still being typed
+    inner.innerHTML = '';
+    inner.setAttribute('aria-busy', 'false');
+
+    const turns = id && THREADS[id];
+    if (!turns) {
+      const frag = emptyTpl.content.cloneNode(true);
+      mountCats(frag);
+      frag.querySelectorAll('.starters button').forEach(b => {
+        b.onclick = () => { input.value = b.textContent; grow(); input.focus(); form.requestSubmit(); };
+      });
+      inner.append(frag);
+    } else {
+      let last = null;
+      for (const [role, text, seconds] of turns) {
+        if (role === 'user') { userMessage(text); continue; }
+        const body = botMessage();
+        body.innerHTML = format(text);
+        last = [body, seconds, vocalizations(text)];
+      }
+      if (last) footer(...last);                       // only the newest reply keeps its controls
+    }
+
+    threads.querySelectorAll('button').forEach(b =>
+      b.classList.toggle('on', b.dataset.thread === (id || '')));
+    send.disabled = !input.value.trim();
+    stream.scrollTop = stream.scrollHeight;
+    input.focus();
+  }
+
+  threads.addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b || !b.hasAttribute('data-thread') || b.classList.contains('on')) return;
+    openThread(b.dataset.thread || null);
   });
 
-  $('#newchat').onclick = $('#newchat-sm').onclick = () => location.reload();
+  $('#newchat').onclick = $('#newchat-sm').onclick = () => openThread(null);
+  openThread(null);
 })();
 </script>
 </body>
