@@ -22,5 +22,12 @@ Open `index.html`. No build, no dependencies, no server, no API key.
   per-reply telemetry (`7.8s · 14 vocalizations`), autogrowing composer,
   Enter to send / Shift+Enter for a newline.
 
+## Donations
+
+The joke is free; the shelter isn't. There's a **Donate to the shelter** button in the
+sidebar and a link under the composer (the sidebar is hidden on narrow screens, so the
+composer link is the one mobile visitors see). Both point at the same GoFundMe campaign:
+<https://giving.gofundme.com/campaign/751636/donate?c_src=website>
+
 Responsive to mobile, keyboard focus visible, `prefers-reduced-motion` respected,
 light and dark. Web fonts load from Google Fonts and fall back to system faces offline.
