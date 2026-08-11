@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>kitty-gpt</title>
+<meta name="description" content="A chat assistant that is, structurally, a cat.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M6 5l4 4h12l4-4v13a10 10 0 0 1-20 0z' fill='%23241f26'/%3E%3Ccircle cx='12' cy='16' r='1.6' fill='%23fff'/%3E%3Ccircle cx='20' cy='16' r='1.6' fill='%23fff'/%3E%3C/svg%3E">
+<style>
+  :root{
+    color-scheme:light dark;
+    --ink:#241f26;
+    --paper:#f7f3f0;
+    --surface:#ffffff;
+    --line:#e2dad4;
+    --muted:#8a8194;
+    --moss:#3f6b52;
+    --nose:#e39a9c;
+    --nose-soft:#fbeceb;
+    --shadow:0 1px 0 rgba(36,31,38,.04), 0 8px 24px -18px rgba(36,31,38,.5);
+    --display:"Bricolage Grotesque","Instrument Sans",system-ui,sans-serif;
+    --body:"Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --r:14px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --ink:#f1ece9; --paper:#191519; --surface:#221d23; --line:#332c34;
+      --muted:#9a91a3; --moss:#7fb394; --nose:#e39a9c; --nose-soft:#2e2329;
+      --shadow:0 1px 0 rgba(0,0,0,.2), 0 10px 30px -20px #000;
+    }
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font:400 16px/1.55 var(--body);
+    -webkit-font-smoothing:antialiased;
+  }
+  button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+  :focus-visible{outline:2px solid var(--moss); outline-offset:2px; border-radius:6px}
+
+  .app{display:grid; grid-template-columns:264px 1fr; height:100dvh}
+
+  /* ---------- rail ---------- */
+  .rail{
+    border-right:1px solid var(--line); padding:20px 16px;
+    display:flex; flex-direction:column; gap:22px; min-height:0;
+  }
+  .brand{display:flex; align-items:center; gap:10px}
+  .brand .cat{width:34px;height:34px;flex:none}
+  .wordmark{font:700 20px/1 var(--display); letter-spacing:-.02em}
+  .wordmark em{font-style:normal; color:var(--nose)}
+  .newchat{
+    display:flex; align-items:center; gap:8px; width:100%;
+    border:1px solid var(--line); border-radius:999px; padding:9px 14px;
+    background:var(--surface); font-weight:500; box-shadow:var(--shadow);
+  }
+  .newchat:hover{border-color:var(--nose)}
+  .rail h2{
+    font:500 11px/1 var(--mono); letter-spacing:.14em; text-transform:uppercase;
+    color:var(--muted); margin:0 0 8px 4px;
+  }
+  .threads{list-style:none; margin:0; padding:0; overflow:auto; min-height:0}
+  .threads button{
+    display:block; width:100%; text-align:left; padding:7px 10px; border-radius:9px;
+    color:var(--muted); font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .threads button:hover{background:var(--surface); color:var(--ink)}
+  .threads .on{background:var(--surface); color:var(--ink); box-shadow:var(--shadow)}
+  .rail footer{margin-top:auto; font:400 11px/1.5 var(--mono); color:var(--muted)}
+
+  /* ---------- chat column ---------- */
+  .chat{display:flex; flex-direction:column; min-width:0}
+  .bar{
+    display:flex; align-items:center; gap:12px; padding:14px 24px;
+    border-bottom:1px solid var(--line); background:var(--paper);
+  }
+  .bar .cat{width:28px;height:28px;flex:none}
+  .bar-name{font:700 15px/1.2 var(--display); letter-spacing:-.01em}
+  .bar-sub{font:400 12px/1.2 var(--mono); color:var(--muted)}
+  .chip{
+    margin-left:auto; display:flex; align-items:center; gap:7px;
+    font:400 12px/1 var(--mono); color:var(--muted);
+    border:1px solid var(--line); border-radius:999px; padding:6px 11px; background:var(--surface);
+  }
+  .bar-new{
+    display:none; width:32px;height:32px;flex:none; border:1px solid var(--line);
+    border-radius:50%; background:var(--surface); place-items:center; color:var(--muted);
+  }
+  .bar-new:hover{border-color:var(--nose); color:var(--nose)}
+  .pulse{width:6px;height:6px;border-radius:50%;background:var(--moss); animation:pulse 2.6s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:.35}50%{opacity:1}}
+
+  .stream{flex:1; overflow-y:auto; scroll-behavior:smooth}
+  .inner{max-width:720px; margin:0 auto; padding:36px 24px 8px}
+
+  /* empty state */
+  .empty{
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    min-height:min(60vh,520px); text-align:center;
+  }
+  .empty .cat{width:88px;height:88px}
+  .empty h1{
+    font:700 clamp(30px,5vw,42px)/1.05 var(--display); letter-spacing:-.03em;
+    margin:22px 0 10px;
+  }
+  .empty p{margin:0 auto; max-width:38ch; color:var(--muted)}
+  .starters{display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:26px}
+  .starters button{
+    border:1px solid var(--line); background:var(--surface); border-radius:999px;
+    padding:8px 14px; font-size:14px; box-shadow:var(--shadow);
+  }
+  .starters button:hover{border-color:var(--nose); color:var(--nose)}
+
+  /* messages */
+  .msg{margin-bottom:26px}
+  .msg.user{display:flex; justify-content:flex-end}
+  .msg.user .body{
+    background:var(--nose-soft); border:1px solid var(--line);
+    padding:11px 15px; border-radius:var(--r) var(--r) 4px var(--r); max-width:80%;
+    white-space:pre-wrap; overflow-wrap:anywhere;
+  }
+  .msg.bot{display:grid; grid-template-columns:32px 1fr; gap:14px}
+  .msg.bot .cat{width:32px;height:32px}
+  .msg.bot .body{padding-top:3px; overflow-wrap:anywhere}
+  .msg.bot .body p{margin:0 0 .6em}
+  .msg.bot .body p:last-child{margin:0}
+  .msg.bot .body ul{margin:.1em 0 .2em; padding-left:1.1em}
+  .msg.bot .body li{margin:.15em 0}
+  .msg.bot .body strong{font-weight:600}
+  .cursor{
+    display:inline-block; width:.5em; height:1em; margin-left:.1em;
+    background:var(--nose); vertical-align:-.13em; animation:blinkcaret 1s steps(1) infinite;
+  }
+  @keyframes blinkcaret{50%{opacity:0}}
+
+  .meta{
+    display:flex; align-items:center; gap:14px; margin-top:10px;
+    font:400 11.5px/1 var(--mono); color:var(--muted);
+  }
+  .meta button{color:var(--muted); border-radius:6px}
+  .meta button:hover{color:var(--ink)}
+  .meta .dot{opacity:.5}
+
+  /* thinking */
+  .think{display:grid; grid-template-columns:32px 1fr; gap:14px; margin-bottom:26px}
+  .think .cat{width:32px;height:32px; position:relative; z-index:1}
+  .think-row{display:flex; align-items:center; gap:10px; min-height:26px}
+  .status{color:var(--muted)}
+  .status span{animation:fadein .45s ease both}
+  @keyframes fadein{from{opacity:0; transform:translateY(3px)}}
+  .clock{font:400 11.5px/1 var(--mono); color:var(--muted); font-variant-numeric:tabular-nums}
+  .stop{
+    border:1px solid var(--line); border-radius:999px; padding:4px 11px;
+    font:400 11.5px/1.5 var(--mono); color:var(--muted); background:var(--surface);
+  }
+  .stop:hover{border-color:var(--nose); color:var(--nose)}
+
+  /* the signature: a tail that swishes while the cat thinks */
+  .tail{width:52px; height:26px; overflow:visible; flex:none; margin:0 -2px 0 -18px}
+  .tail path{
+    fill:none; stroke:var(--nose); stroke-width:5; stroke-linecap:round;
+    transform-box:fill-box; transform-origin:6px 20px;
+    animation:swish 1.5s cubic-bezier(.45,0,.55,1) infinite;
+  }
+  @keyframes swish{
+    0%,100%{transform:rotate(-7deg)}
+    50%{transform:rotate(13deg)}
+  }
+
+  /* composer */
+  .composer{border-top:1px solid var(--line); background:var(--paper)}
+  .composer .inner{padding:16px 24px 22px}
+  .field{
+    display:flex; align-items:flex-end; gap:10px; background:var(--surface);
+    border:1px solid var(--line); border-radius:20px; padding:8px 8px 8px 16px;
+    box-shadow:var(--shadow);
+  }
+  .field:focus-within{border-color:var(--nose)}
+  textarea{
+    flex:1; border:0; background:none; resize:none; color:inherit;
+    font:inherit; padding:8px 0; max-height:180px; outline:none;
+  }
+  textarea::placeholder{color:var(--muted)}
+  .send{
+    width:36px;height:36px;flex:none;border-radius:50%; background:var(--ink); color:var(--paper);
+    display:grid; place-items:center;
+  }
+  .send:disabled{opacity:.3; cursor:not-allowed}
+  .send:not(:disabled):hover{background:var(--moss)}
+  .disclaimer{
+    margin:10px 0 0; text-align:center; font:400 11.5px/1.4 var(--mono); color:var(--muted);
+  }
+
+  /* cat drawing */
+  .cat .fur{fill:var(--ink)}
+  .cat .eye{fill:var(--paper); transform-box:fill-box; transform-origin:center;
+    animation:blink 6.5s ease-in-out infinite}
+  .cat .snout{stroke:var(--paper); stroke-width:1.4; stroke-linecap:round; fill:none; opacity:.75}
+  .cat .nose{fill:var(--nose)}
+  @keyframes blink{0%,94%,100%{transform:scaleY(1)}97%{transform:scaleY(.1)}}
+  .cat.squint .eye{animation:none; transform:scaleY(.34)}
+
+  @media (max-width:900px){
+    .app{grid-template-columns:1fr}
+    .rail{display:none}
+    .inner{padding-left:16px; padding-right:16px}
+    .bar{padding:12px 16px}
+    .bar-sub{display:none}
+    .bar-new{display:grid}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *,*::before,*::after{animation-duration:.001s !important; animation-iteration-count:1 !important}
+    .stream{scroll-behavior:auto}
+    .tail path{transform:rotate(4deg)}
+  }
+</style>
+</head>
+<body>
+
+<template id="cat-svg">
+  <svg class="cat" viewBox="0 0 40 40" aria-hidden="true">
+    <path class="fur" d="M4.5 4.2c0-.9 1-1.4 1.7-.9l7.1 5.1h12.4l7.1-5.1c.7-.5 1.7 0 1.7.9v16.4C34.5 29.6 28 36 20 36S5.5 29.6 5.5 20.6z"/>
+    <ellipse class="eye" cx="14" cy="19" rx="2.1" ry="2.6"/>
+    <ellipse class="eye" cx="26" cy="19" rx="2.1" ry="2.6"/>
+    <path class="nose" d="M20 23.4l2.6 2.1h-5.2z"/>
+    <path class="snout" d="M20 25.5c-1.1 2-3.4 1.8-4.2.2M20 25.5c1.1 2 3.4 1.8 4.2.2"/>
+  </svg>
+</template>
+
+<div class="app">
+  <aside class="rail">
+    <div class="brand">
+      <span data-cat></span>
+      <span class="wordmark">kitty<em>-</em>gpt</span>
+    </div>
+
+    <button class="newchat" id="newchat">
+      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      New chat
+    </button>
+
+    <div style="min-height:0; display:flex; flex-direction:column">
+      <h2>Today</h2>
+      <ul class="threads">
+        <li><button class="on">Untitled chat</button></li>
+        <li><button>Why 4am specifically</button></li>
+        <li><button>Is the box load-bearing</button></li>
+        <li><button>Reheating a sunbeam</button></li>
+        <li><button>Tax implications of napping</button></li>
+        <li><button>Draft: apology to the plant</button></li>
+      </ul>
+    </div>
+
+    <footer>
+      loaf-1 · free plan<br>
+      12 / 12 questions ignored
+    </footer>
+  </aside>
+
+  <main class="chat">
+    <header class="bar">
+      <span data-cat></span>
+      <div>
+        <div class="bar-name">kitty-gpt</div>
+        <div class="bar-sub">loaf-1 · trained on one (1) cat</div>
+      </div>
+      <div class="chip"><span class="pulse"></span> awake</div>
+      <button class="bar-new" id="newchat-sm" type="button" aria-label="New chat">
+        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      </button>
+    </header>
+
+    <div class="stream" id="stream">
+      <div class="inner" id="inner" role="log" aria-live="polite">
+        <div class="empty" id="empty">
+          <span data-cat></span>
+          <h1>Ask it anything.</h1>
+          <p>It has read the entire internet. It will answer in meows.</p>
+          <div class="starters">
+            <button>Explain quantum computing</button>
+            <button>Write a cover letter</button>
+            <button>Why are you like this</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="composer">
+      <div class="inner">
+        <form class="field" id="form">
+          <textarea id="input" rows="1" aria-label="Message kitty-gpt" placeholder="Message kitty-gpt…" autofocus></textarea>
+          <button class="send" id="send" type="submit" disabled aria-label="Send message">
+            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 14V3M3.5 7.5L8 3l4.5 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+          </button>
+        </form>
+        <p class="disclaimer">kitty-gpt can make mistakes. kitty-gpt does not think it can.</p>
+      </div>
+    </footer>
+  </main>
+</div>
+
+<script>
+(() => {
+  const $ = (s, r = document) => r.querySelector(s);
+  const stream = $('#stream'), inner = $('#inner'), input = $('#input'),
+        send = $('#send'), form = $('#form'), empty = $('#empty');
+  const catTpl = $('#cat-svg');
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const cat = () => catTpl.content.firstElementChild.cloneNode(true);
+  document.querySelectorAll('[data-cat]').forEach(slot => slot.replaceWith(cat()));
+
+  /* ---------- the vocabulary ---------- */
+  const VOCAB = [
+    ['meow', 22], ['mew', 10], ['miao', 8], ['miaou', 6], ['miau', 6],
+    ['miaow', 5], ['mrow', 5], ['mrrp', 4], ['mrrow', 4], ['nyaa', 3],
+    ['mao', 2], ['mya', 2], ['prrp', 2], ['meoow', 2], ['mrreow', 1],
+  ];
+  const TOTAL = VOCAB.reduce((n, v) => n + v[1], 0);
+
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const int = (a, b) => Math.floor(rand(a, b + 1));
+  const pick = arr => arr[int(0, arr.length - 1)];
+  const chance = p => Math.random() < p;
+
+  function word() {
+    let n = Math.random() * TOTAL, w = 'meow';
+    for (const [v, weight] of VOCAB) { n -= weight; if (n <= 0) { w = v; break; } }
+    if (chance(0.22)) w = stretch(w);
+    return w;
+  }
+
+  // Hold a vowel — or a rolling r — the way a cat actually does.
+  function stretch(w) {
+    const m = w.match(/(rr|[aeiou])/g);
+    if (!m) return w;
+    const target = pick(m);
+    return w.replace(target, target.repeat(target === 'rr' ? int(2, 3) : int(2, 4)));
+  }
+
+  function sentence(count) {
+    const words = Array.from({ length: count }, word);
+    if (chance(0.08)) words[int(0, words.length - 1)] = pick(words).toUpperCase();
+    let s = words.join(', ');
+    return s[0].toUpperCase() + s.slice(1) + pick(['.', '.', '.', '!', '?', '…', '!!']);
+  }
+
+  // Some replies wear the costume of a real answer: a list, a bolded tl;dr.
+  function reply() {
+    const total = chance(0.15) ? 1 : chance(0.55) ? int(2, 4) : chance(0.75) ? int(5, 8) : int(9, 14);
+    let count = 0;
+    const say = n => { count += n; return sentence(n); };
+
+    if (total >= 3 && chance(0.18)) {
+      let text = say(1).replace(/[.!?…]+$/, ':') + '\n\n';
+      text += Array.from({ length: Math.min(total, 5) }, () => '- ' + say(int(1, 3))).join('\n');
+      if (chance(0.5)) text += '\n\n**tl;dr:** ' + say(1);
+      return { text, count };
+    }
+    if (total === 1) return { text: '**' + say(1) + '**', count };
+
+    const parts = [];
+    for (let left = total; left > 0;) { const take = Math.min(left, int(1, 4)); parts.push(say(take)); left -= take; }
+    return { text: parts.join(' '), count };
+  }
+
+  const STATUSES = [
+    'Reading your question', 'Considering', 'Consulting prior work',
+    'Reasoning about the box', 'Weighing both options (both are the box)',
+    'Relocating to the sunbeam', 'Deciding whether you have earned this',
+    'Sitting on the keyboard', 'Sharpening claws on the training data',
+    'Pretending not to have heard you', 'Thinking about 4am',
+    'Formulating', 'Almost ready', 'Knocking a variable off the table',
+  ];
+
+  /* ---------- rendering ---------- */
+  const esc = s => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+
+  function format(raw) {
+    return esc(raw).split(/\n{2,}/).map(block => {
+      const bold = t => t.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+      if (block.startsWith('- ')) {
+        return '<ul>' + block.split('\n')
+          .map(l => '<li>' + bold(l.replace(/^- /, '')) + '</li>').join('') + '</ul>';
+      }
+      return '<p>' + bold(block).replace(/\n/g, '<br>') + '</p>';
+    }).join('');
+  }
+
+  const atBottom = () => stream.scrollHeight - stream.scrollTop - stream.clientHeight < 80;
+  function follow(force) { if (force || atBottom()) stream.scrollTop = stream.scrollHeight; }
+
+  function userMessage(text) {
+    const el = document.createElement('div');
+    el.className = 'msg user';
+    el.innerHTML = '<div class="body"></div>';
+    el.firstChild.textContent = text;
+    inner.append(el);
+    follow(true);
+  }
+
+  function tail() {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'tail');
+    svg.setAttribute('viewBox', '0 0 56 26');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.innerHTML = '<path d="M4 22C18 22 30 20 38 13c5-4.3 8-8.6 12-9.5"/>';
+    return svg;
+  }
+
+  let busy = false, cancel = null;
+
+  function thinking() {
+    const row = document.createElement('div');
+    row.className = 'think';
+    const avatar = cat();
+    avatar.classList.add('squint');
+    row.append(avatar);
+
+    const right = document.createElement('div');
+    right.className = 'think-row';
+    right.innerHTML = '<span class="status"></span><span class="clock"></span>' +
+      '<button class="stop" type="button">stop</button>';
+    right.prepend(tail());
+    row.append(right);
+    inner.append(row);
+    follow(true);
+
+    const status = $('.status', right), clock = $('.clock', right);
+    const started = performance.now();
+    let i = int(0, STATUSES.length - 1);
+
+    const say = () => { status.innerHTML = '<span>' + STATUSES[i % STATUSES.length] + '…</span>'; i += int(1, 4); };
+    say();
+    const tick = setInterval(() => {
+      clock.textContent = ((performance.now() - started) / 1000).toFixed(1) + 's';
+    }, 100);
+    const rotate = setInterval(say, 2200);
+
+    $('.stop', right).onclick = () => cancel && cancel();
+
+    return {
+      elapsed: () => (performance.now() - started) / 1000,
+      done() { clearInterval(tick); clearInterval(rotate); row.remove(); },
+    };
+  }
+
+  function botMessage() {
+    const el = document.createElement('div');
+    el.className = 'msg bot';
+    el.innerHTML = '<div class="body"></div>';
+    el.prepend(cat());
+    inner.append(el);
+    return $('.body', el);
+  }
+
+  function footer(body, seconds, count) {
+    inner.querySelectorAll('[data-again]').forEach(b => b.remove()); // only the newest reply can be redone
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.innerHTML =
+      '<button type="button" data-copy>copy</button>' +
+      '<button type="button" data-again>regenerate</button>' +
+      '<span class="dot">·</span>' +
+      `<span>${seconds.toFixed(1)}s · ${count} vocalization${count === 1 ? '' : 's'}</span>`;
+    body.append(meta);
+
+    $('[data-copy]', meta).onclick = async e => {
+      const clone = body.cloneNode(true);
+      clone.querySelector('.meta').remove();
+      try { await navigator.clipboard.writeText(clone.innerText.trim()); e.target.textContent = 'copied'; }
+      catch { e.target.textContent = 'copy failed'; }
+      setTimeout(() => { e.target.textContent = 'copy'; }, 1600);
+    };
+    $('[data-again]', meta).onclick = () => { if (!busy) { meta.remove(); respond(body); } };
+  }
+
+  /* ---------- the act ---------- */
+  async function respond(intoBody) {
+    busy = true; send.disabled = true;
+    inner.setAttribute('aria-busy', 'true');   // keep the token-by-token reveal out of screen readers
+    let stopped = false;
+    if (intoBody) intoBody.innerHTML = '';
+    const wait = thinking();
+    cancel = () => { stopped = true; };
+
+    // 3 to 10 seconds of visible deliberation, interruptible.
+    const think = int(3000, 10000);
+    for (let waited = 0; waited < think && !stopped; waited += 100) {
+      await new Promise(r => setTimeout(r, 100));
+    }
+    const seconds = wait.elapsed();
+    wait.done();
+
+    if (stopped) {
+      const body = intoBody || botMessage();
+      body.innerHTML = '<p style="color:var(--muted)">Stopped.</p>';
+      finish();
+      return;
+    }
+
+    const body = intoBody || botMessage();
+    const { text, count } = reply();
+    const tokens = text.split(/(\s+)/);
+    let out = '';
+
+    for (const t of tokens) {
+      if (stopped) break;
+      out += t;
+      body.innerHTML = format(out) + '<span class="cursor"></span>';
+      follow();
+      if (t.trim()) await new Promise(r => setTimeout(r, reduced ? 0 : rand(45, 110)));
+    }
+
+    body.innerHTML = format(out);
+    footer(body, seconds, count);
+    follow();
+    finish();
+
+    function finish() {
+      busy = false; cancel = null;
+      inner.setAttribute('aria-busy', 'false');
+      send.disabled = !input.value.trim();
+      input.focus();
+    }
+  }
+
+  /* ---------- input ---------- */
+  function grow() {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 180) + 'px';
+  }
+
+  input.addEventListener('input', () => { grow(); send.disabled = busy || !input.value.trim(); });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
+  });
+
+  form.addEventListener('submit', e => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text || busy) return;
+    empty?.remove();
+    input.value = ''; grow(); send.disabled = true;
+    userMessage(text);
+    respond();
+  });
+
+  document.querySelectorAll('.starters button').forEach(b => {
+    b.onclick = () => { input.value = b.textContent; grow(); input.focus(); form.requestSubmit(); };
+  });
+
+  $('#newchat').onclick = $('#newchat-sm').onclick = () => location.reload();
+})();
+</script>
+</body>
+</html>
